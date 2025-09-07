@@ -1,68 +1,71 @@
-// Zaruri packages
-const axios = require('axios');
-const cheerio = require('cheerio');
+// Nayi aur powerful libraries
+const chromium = require('chrome-aws-lambda');
+const puppeteer = require('puppeteer-core');
 
-// Yeh Netlify ka function handler hai
 exports.handler = async function(event, context) {
     // Frontend se URL get karein
     const { url } = event.queryStringParameters;
 
     if (!url) {
-        return {
-            statusCode: 400,
-            body: JSON.stringify({ error: 'URL is required.' })
-        };
+        return { statusCode: 400, body: JSON.stringify({ error: 'URL is required.' }) };
     }
 
+    let browser = null;
+
     try {
-        // ===== CHANGE #1: User-Agent Header Add Kiya Gaya Hai =====
-        // Yeh CodeCanyon ko batata hai ke hum ek real browser hain, taake woh humein block na kare.
-        const { data } = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
-            }
+        // Headless browser ko tayyar karein
+        browser = await puppeteer.launch({
+            args: chromium.args,
+            executablePath: await chromium.executablePath,
+            headless: chromium.headless,
         });
 
-        const $ = cheerio.load(data);
-        const scrapedData = [];
+        // Naya page kholein
+        const page = await browser.newPage();
+        
+        // Is se hum browser ko ek aam insan ki tarah dikhayeinge
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
-        // ===== CHANGE #2: Selectors Ko Update Kiya Gaya Hai =====
-        // CodeCanyon ne apna design badal diya hai, isliye naye selectors zaruri hain.
-        $('div[class^="ProductCard_container"]').each((index, element) => {
-            const titleElement = $(element).find('h3 a');
-            const title = titleElement.text().trim();
-            const productLink = titleElement.attr('href');
-            
-            // Reviews ka selector alag ho sakta hai
-            const reviews = $(element).find('span[class^="ProductCard_ratingCount"]').text().trim();
+        // CodeCanyon ke page par jayein
+        await page.goto(url, { waitUntil: 'networkidle2' });
 
-            if (title && productLink) {
-                scrapedData.push({
-                    title: title,
-                    reviews: reviews.replace('(', '').replace(')', ''), // Extra characters ( ) saaf karne ke liye
-                    link: productLink
-                });
-            }
+        // Page ka poora HTML content get karein
+        const html = await page.content();
+        
+        // Ab Cheerio ki zarurat nahi, hum browser ke andar hi data nikalenge
+        const scrapedData = await page.evaluate(() => {
+            const items = [];
+            // Naye selectors jo page par JavaScript chalne ke baad kaam karte hain
+            document.querySelectorAll('div[class^="ProductCard_container"]').forEach(element => {
+                const titleElement = element.querySelector('h3 a');
+                const reviewsElement = element.querySelector('span[class^="ProductCard_ratingCount"]');
+
+                if (titleElement) {
+                    items.push({
+                        title: titleElement.innerText.trim(),
+                        link: titleElement.href,
+                        reviews: reviewsElement ? reviewsElement.innerText.trim().replace('(', '').replace(')', '') : 'N/A'
+                    });
+                }
+            });
+            return items;
         });
 
-        // Agar koi data na mile to message bhejein
-        if (scrapedData.length === 0) {
-             return {
-                statusCode: 200,
-                body: JSON.stringify([{ title: "Koi item nahi mila.", reviews: "Ho sakta hai CodeCanyon ne design badal diya ho, ya yeh page khali hai.", link: "#" }])
-            };
-        }
-
-        // Data JSON format mein wapis bhejein
         return {
             statusCode: 200,
             body: JSON.stringify(scrapedData)
         };
 
     } catch (error) {
+        console.error(error); // Error ko log karein taake hum Netlify par dekh sakein
         return {
             statusCode: 500,
             body: JSON.stringify({ error: 'Data scrape karne mein masla hua.', details: error.message })
         };
+    } finally {
+        // Browser ko hamesha band karein
+        if (browser !== null) {
+            await browser.close();
+        }
     }
 };
