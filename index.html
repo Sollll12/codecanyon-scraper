@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Scraper Dashboard</title>
+
+    <!-- ===== CSS STYLES START HERE ===== -->
+    <style>
+        /* Google Font for professional look */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        :root {
+            --primary-color: #4a90e2;
+            --background-color: #f0f2f5;
+            --card-background: #ffffff;
+            --text-color: #333333;
+            --light-text-color: #777777;
+            --border-color: #e0e0e0;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 25px;
+            background-color: var(--card-background);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            margin: 0;
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .header p {
+            margin-top: 5px;
+            color: var(--light-text-color);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        #urlInput {
+            flex-grow: 1;
+            padding: 12px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        #urlInput:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.2);
+        }
+
+        #fetchBtn {
+            padding: 12px 25px;
+            background-image: linear-gradient(45deg, #4a90e2, #50e3c2);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.3s;
+        }
+
+        #fetchBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(74, 144, 226, 0.3);
+        }
+
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 40px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .results-container {
+            display: grid;
+            gap: 20px;
+        }
+
+        .result-card {
+            background-color: var(--card-background);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s, box-shadow 0.3s;
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+        }
+        
+        .result-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .result-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.2em;
+        }
+
+        .result-card a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .result-card a:hover {
+            text-decoration: underline;
+        }
+
+        .result-card .info {
+            color: var(--light-text-color);
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+        
+        .info strong {
+            color: #333;
+        }
+        
+        .message {
+            text-align: center;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            color: var(--light-text-color);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+    <!-- ===== CSS STYLES END HERE ===== -->
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>Demanding Item Finder</h1>
+            <p>CodeCanyon se popular items ke ideas haasil karein</p>
+        </div>
+
+        <div class="input-group">
+            <input type="text" id="urlInput" placeholder="CodeCanyon popular items ka URL yahan paste karein...">
+            <button id="fetchBtn">Search</button>
+        </div>
+
+        <div id="loader" style="display: none;"></div>
+        <div id="results" class="results-container">
+            <!-- Scraped data yahan cards ki shakal mein show hoga -->
+        </div>
+    </div>
+
+    <!-- ===== JAVASCRIPT LOGIC START HERE ===== -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const fetchBtn = document.getElementById('fetchBtn');
+            const urlInput = document.getElementById('urlInput');
+            const resultsDiv = document.getElementById('results');
+            const loader = document.getElementById('loader');
+
+            fetchBtn.addEventListener('click', fetchData);
+            urlInput.addEventListener('keyup', (event) => {
+                if (event.key === 'Enter') {
+                    fetchData();
+                }
+            });
+
+            function fetchData() {
+                const url = urlInput.value.trim();
+                if (!url) {
+                    displayMessage('Error', 'Please enter a valid CodeCanyon URL.');
+                    return;
+                }
+
+                resultsDiv.innerHTML = '';
+                loader.style.display = 'block';
+
+                // Netlify Function ko call karne ka URL
+                const apiUrl = `/.netlify/functions/scrape?url=${encodeURIComponent(url)}`;
+
+                fetch(apiUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`Network response error: ${response.statusText}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        loader.style.display = 'none';
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+                        displayResults(data);
+                    })
+                    .catch(error => {
+                        loader.style.display = 'none';
+                        displayMessage('Error', `Data fetch karne mein masla hua: ${error.message}`);
+                        console.error('Fetch Error:', error);
+                    });
+            }
+
+            function displayResults(data) {
+                if (data.length === 0) {
+                    displayMessage('Info', 'Is page par koi items nahi mile. Please selectors check karein ya URL badal kar try karein.');
+                    return;
+                }
+
+                data.forEach((item, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'result-card';
+                    card.style.animationDelay = `${index * 0.1}s`; // Her card thori dair se show hoga
+                    
+                    card.innerHTML = `
+                        <h3>
+                            <a href="${item.link}" target="_blank" rel="noopener noreferrer">
+                                ${item.title || 'Untitled'}
+                            </a>
+                        </h3>
+                        <p class="info">
+                            Reviews: <strong>${item.reviews || 'N/A'}</strong>
+                        </p>
+                    `;
+                    resultsDiv.appendChild(card);
+                });
+            }
+            
+            function displayMessage(type, text) {
+                resultsDiv.innerHTML = `<div class="message ${type.toLowerCase()}">${text}</div>`;
+            }
+        });
+    </script>
+    <!-- ===== JAVASCRIPT LOGIC END HERE ===== -->
+
+</body>
+</html>
