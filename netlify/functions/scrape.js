@@ -1,59 +1,47 @@
-// Nayi aur behtar library istemal kar rahe hain
-const chromium = require('@sparticuz/chrome-aws-lambda');
-const puppeteer = require('puppeteer-core');
+const axios = require('axios');
 
 exports.handler = async function(event, context) {
-    const { url } = event.queryStringParameters;
-    if (!url) {
-        return { statusCode: 400, body: JSON.stringify({ error: 'URL is required.' }) };
+    // Netlify ki tijori se API key nikalein
+    const apiKey = process.env.ENVATO_API_KEY;
+
+    // Agar API key nahi hai to error dein
+    if (!apiKey) {
+        return { statusCode: 500, body: JSON.stringify({ error: 'Server par API key set nahi hai.' }) };
     }
     
-    let browser = null;
+    // Envato API ka URL (CodeCanyon ke popular items ke liye)
+    const apiUrl = 'https://api.envato.com/v3/market/popular?site=codecanyon.net';
 
     try {
-        // Headless browser ko tayyar karein
-        browser = await puppeteer.launch({
-            args: chromium.args,
-            executablePath: await chromium.executablePath,
-            headless: chromium.headless,
-        });
-        
-        const page = await browser.newPage();
-        
-        // Page ko load hone ke liye poora time dein
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 0 });
-
-        // Page ke andar se data nikalein
-        const scrapedData = await page.evaluate(() => {
-            const items = [];
-            document.querySelectorAll('div[class^="ProductCard_container"]').forEach(element => {
-                const titleElement = element.querySelector('h3 a');
-                const reviewsElement = element.querySelector('span[class^="ProductCard_ratingCount"]');
-                if (titleElement) {
-                    items.push({
-                        title: titleElement.innerText.trim(),
-                        link: titleElement.href,
-                        reviews: reviewsElement ? reviewsElement.innerText.trim().replace('(', '').replace(')', '') : 'N/A'
-                    });
-                }
-            });
-            return items;
+        // API ko request bhejein, saath mein key bhi
+        const response = await axios.get(apiUrl, {
+            headers: {
+                // API key ko is tarah "Bearer Token" ke taur par bhejna zaroori hai
+                'Authorization': `Bearer ${apiKey}`
+            }
         });
 
-        return { 
-            statusCode: 200, 
-            body: JSON.stringify(scrapedData) 
+        // API se jo data mila hai, usay saaf suthra karein taake hamara dashboard usay samjh sake
+        const items = response.data.popular.items_last_week;
+        
+        const apiData = items.map(item => ({
+            title: item.name,
+            reviews: String(item.rating.count), // Rating count ko string banayein
+            link: item.url
+        }));
+        
+        // Data ko frontend par bhej dein
+        return {
+            statusCode: 200,
+            body: JSON.stringify(apiData)
         };
 
     } catch (error) {
-        console.error("Puppeteer Error:", error);
-        return { 
-            statusCode: 500, 
-            body: JSON.stringify({ error: 'Puppeteer scrape karne mein masla hua.', details: error.message }) 
+        // Agar API se data lene mein koi masla ho to, isay handle karein
+        console.error("API Error:", error.response ? error.response.data : error.message);
+        return {
+            statusCode: 500,
+            body: JSON.stringify({ error: 'Envato API se data lene mein masla hua. Key theek hai?' })
         };
-    } finally {
-        if (browser !== null) {
-            await browser.close();
-        }
     }
 };
